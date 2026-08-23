@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Flame, Tag, Plus, Edit2, Trash2, BarChart3 } from 'lucide-react';
 
 export default function EnglishDiaryApp() {
   const [entries, setEntries] = useState([]);
