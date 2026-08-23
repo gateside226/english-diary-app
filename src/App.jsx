@@ -189,12 +189,20 @@ export default function EnglishDiaryApp() {
     if (entries.length === 0) return 0;
 
     const sortedDates = [...new Set(entries.map(e => e.date))].sort().reverse();
-    let streak = 0;
-    let currentDate = new Date();
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const mostRecent = new Date(sortedDates[0]);
+    const mostRecentMidnight = new Date(mostRecent.getFullYear(), mostRecent.getMonth(), mostRecent.getDate());
+    const daysSinceLastEntry = Math.round((todayMidnight - mostRecentMidnight) / msPerDay);
 
+    // 直近の投稿が今日でも昨日でもない場合（1日以上空いた場合）は記録が途切れている
+    if (daysSinceLastEntry > 1) return 0;
+
+    let streak = 0;
     for (let i = 0; i < sortedDates.length; i++) {
       const entryDate = new Date(sortedDates[i]);
-      const expectedDate = new Date(currentDate);
+      const expectedDate = new Date(mostRecentMidnight);
       expectedDate.setDate(expectedDate.getDate() - i);
 
       if (entryDate.toDateString() === expectedDate.toDateString()) {
