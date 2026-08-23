@@ -37,6 +37,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 100,
+        system: 'あなたはJSONのみを出力するAPIです。説明文やコードブロック記法(```)は一切付けず、{"tags": [...]}という形式のJSONだけを返してください。',
         messages: [
           {
             role: 'user',
@@ -70,7 +71,11 @@ ${text}
 
     let tags = [];
     try {
-      const parsed = JSON.parse(content);
+      // Claudeがコードブロックや前後に説明文を付けて返す場合に備え、
+      // 最初の { ... } 部分だけを抜き出してから解析する
+      const objMatch = content.match(/\{[\s\S]*\}/);
+      const jsonStr = objMatch ? objMatch[0] : content;
+      const parsed = JSON.parse(jsonStr);
       if (Array.isArray(parsed.tags)) {
         tags = parsed.tags.filter((t) => typeof t === 'string').slice(0, 3);
       }
