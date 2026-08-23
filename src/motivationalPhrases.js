@@ -1,26 +1,31 @@
-// 英語学習のモチベーションにつながる英語フレーズ集。
+// 実在する英語のことわざ・慣用表現集（AIが生成したものではなく、固定リスト）。
 // 日替わりで1つ表示する（同じ日にリロードしても変わらないよう日付から決定的に選ぶ）。
+// ※日本語は直訳ではなく、意味が近い日本語のことわざ・表現を添えている場合があります。
 const PHRASES = [
-  { en: 'A little progress each day adds up to big results.', ja: '毎日の小さな積み重ねが大きな結果につながる' },
-  { en: 'The only way to learn a language is to use it.', ja: '言語を学ぶ唯一の方法は、それを使うこと' },
-  { en: "Mistakes are proof that you are trying.", ja: '間違いは挑戦している証' },
-  { en: 'Practice makes progress, not perfection.', ja: '練習は完璧ではなく上達をもたらす' },
-  { en: 'Every word you learn today is a tool for tomorrow.', ja: '今日覚えた単語は明日の道具になる' },
-  { en: "Don't watch the clock; do what it does. Keep going.", ja: '時計を見るな。時計がすることをしろ。進み続けろ' },
-  { en: 'Fluency is built one sentence at a time.', ja: '流暢さは一文ずつ積み上げていくもの' },
-  { en: 'Small steps every day lead to big changes.', ja: '毎日の小さな一歩が大きな変化につながる' },
-  { en: 'You are one habit away from real fluency.', ja: '本当の流暢さまで、あと一つの習慣だけ' },
-  { en: 'Consistency beats intensity.', ja: '継続は集中に勝る' },
-  { en: 'Speak, even if you are afraid of mistakes.', ja: '間違いを恐れずに話そう' },
-  { en: 'Your only limit is the one you set for yourself.', ja: '限界は自分自身が決めるもの' },
-  { en: 'Learning a language is a journey, not a race.', ja: '言語学習はレースではなく旅' },
-  { en: 'Today’s effort is tomorrow’s confidence.', ja: '今日の努力は明日の自信' },
-  { en: 'Keep going. Everything you need will come to you.', ja: '進み続けよう。必要なものは全て後からついてくる' },
-  { en: 'The expert in anything was once a beginner.', ja: 'どんな達人も最初は初心者だった' },
-  { en: 'Write a little every day; it adds up faster than you think.', ja: '毎日少しずつ書けば、思うより早く積み上がる' },
-  { en: 'Progress, not perfection.', ja: '大切なのは完璧さではなく進歩' },
-  { en: 'One sentence a day keeps stagnation away.', ja: '一日一文が停滞を防ぐ' },
-  { en: 'Your future self will thank you for today’s effort.', ja: '未来の自分が今日の努力に感謝する' }
+  { en: 'Practice makes perfect.', ja: '習うより慣れよ' },
+  { en: "Rome wasn't built in a day.", ja: 'ローマは一日にして成らず' },
+  { en: 'Slow and steady wins the race.', ja: '急がば回れ' },
+  { en: "Where there's a will, there's a way.", ja: '精神一到何事か成らざらん' },
+  { en: 'Actions speak louder than words.', ja: '行動は言葉よりも雄弁' },
+  { en: 'The early bird catches the worm.', ja: '早起きは三文の徳' },
+  { en: 'No pain, no gain.', ja: '苦は楽の種' },
+  { en: 'Better late than never.', ja: '遅くともしないよりはまし' },
+  { en: 'A journey of a thousand miles begins with a single step.', ja: '千里の道も一歩から' },
+  { en: "You can't make an omelette without breaking eggs.", ja: '卵を割らずにオムレツは作れない' },
+  { en: 'When in Rome, do as the Romans do.', ja: '郷に入っては郷に従え' },
+  { en: "It's never too late to learn.", ja: '学ぶのに遅すぎるということはない' },
+  { en: 'Knowledge is power.', ja: '知は力なり' },
+  { en: 'Little strokes fell great oaks.', ja: '塵も積もれば山となる' },
+  { en: 'Every cloud has a silver lining.', ja: '苦あれば楽あり' },
+  { en: "Don't count your chickens before they hatch.", ja: '捕らぬ狸の皮算用' },
+  { en: 'The pen is mightier than the sword.', ja: '文は武より強し' },
+  { en: 'Time flies when you are having fun.', ja: '楽しい時間はあっという間に過ぎる' },
+  { en: 'Practice what you preach.', ja: '言行一致' },
+  { en: "Two heads are better than one.", ja: '三人寄れば文殊の知恵' },
+  { en: 'Failure teaches success.', ja: '失敗は成功のもと' },
+  { en: 'While there is life, there is hope.', ja: '命あっての物種' },
+  { en: 'Well begun is half done.', ja: '始めが肝心' },
+  { en: 'Look before you leap.', ja: '転ばぬ先の杖' }
 ];
 
 export function getTodaysPhrase(date = new Date()) {
