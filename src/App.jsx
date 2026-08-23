@@ -99,7 +99,10 @@ export default function EnglishDiaryApp() {
   }, [user]);
 
   const handleLogin = () => {
-    signInWithRedirect(auth, googleProvider);
+    signInWithRedirect(auth, googleProvider).catch((err) => {
+      console.error('ログインエラー:', err);
+      alert('⚠️ ログインに失敗しました。\n\nエラー: ' + err.message);
+    });
   };
 
   const handleLogout = () => {
