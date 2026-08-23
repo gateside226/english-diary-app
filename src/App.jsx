@@ -4,22 +4,18 @@ export default function EnglishDiaryApp() {
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [view, setView] = useState('calendar');
   const [editingId, setEditingId] = useState(null);
-  const [tempApiKey, setTempApiKey] = useState('');
 
   // ローカルストレージから読み込み
   useEffect(() => {
     const saved = localStorage.getItem('diaryEntries');
-    const savedKey = localStorage.getItem('apiKey');
     if (saved) setEntries(JSON.parse(saved));
-    if (savedKey) {
-      setApiKey(savedKey);
-      setTempApiKey('****' + savedKey.slice(-8));
+    // 旧バージョンでブラウザに保存されていたAPIキーが残っていれば削除する
+    if (localStorage.getItem('apiKey')) {
+      localStorage.removeItem('apiKey');
     }
   }, []);
 
@@ -28,47 +24,26 @@ export default function EnglishDiaryApp() {
     localStorage.setItem('diaryEntries', JSON.stringify(entries));
   }, [entries]);
 
-  // Claude APIでタグ分類
+  // Claude APIでタグ分類（サーバーサイドの /api/classify 経由。APIキーはブラウザに一切渡らない）
   const classifyTags = async (entryText) => {
-    if (!apiKey) {
-      alert('❌ APIキーを入力してください');
-      setShowApiKeyInput(true);
-      return [];
-    }
-
     setIsLoading(true);
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/classify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 100,
-          messages: [
-            {
-              role: 'user',
-              content: `この英語の日記エントリを分析して、以下のカテゴリーから3つまでタグを選んでください。JSONフォーマットで返してください。タグは1語ずつです。\n\nカテゴリー:\n- #時制 (tense): 時制の使い方\n- #感情 (emotion): 感情表現\n- #日常 (daily): 日常会話\n- #描写 (description): 詳細な描写\n- #疑問 (question): 疑問文\n- #仮定 (conditional): 仮定法\n\n日記:\n${entryText}\n\nレスポンス例: {"tags": ["#時制", "#感情", "#日常"]}`
-            }
-          ]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: entryText })
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || `API Error: ${response.status}`);
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `API Error: ${response.status}`);
       }
 
       const data = await response.json();
-      const content = data.content[0].text;
-      const parsed = JSON.parse(content);
-      return parsed.tags || [];
+      return Array.isArray(data.tags) ? data.tags : [];
     } catch (error) {
       console.error('タグ分類エラー:', error);
-      alert('⚠️ タグ分類に失敗しました。APIキーを確認してください。\n\nエラー: ' + error.message);
+      alert('⚠️ タグ分類に失敗しました。しばらくしてからもう一度お試しください。');
       return [];
     } finally {
       setIsLoading(false);
@@ -167,17 +142,6 @@ export default function EnglishDiaryApp() {
     calendarDays.push(day);
   }
 
-  const handleSaveApiKey = () => {
-    if (tempApiKey.startsWith('sk-ant-')) {
-      setApiKey(tempApiKey);
-      localStorage.setItem('apiKey', tempApiKey);
-      setShowApiKeyInput(false);
-      alert('✅ APIキーが保存されました');
-    } else {
-      alert('❌ 有効なAPIキーではありません（sk-ant- で始まる必要があります）');
-    }
-  };
-
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, rgb(239, 246, 255), rgb(224, 231, 255))', padding: '1rem' }}>
       <div style={{ maxWidth: '90rem', margin: '0 auto' }}>
@@ -212,53 +176,6 @@ export default function EnglishDiaryApp() {
             </div>
           </div>
         </div>
-
-        {/* APIキー設定 */}
-        {!apiKey && (
-          <div style={{ background: 'rgb(254, 243, 199)', border: '1px solid rgb(253, 224, 71)', borderRadius: '0.5rem', padding: '1rem', marginBottom: '2rem' }}>
-            <p style={{ color: 'rgb(120, 53, 15)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-              ⚠️ Claude APIキーを設定してください（AI タグ分類を使うため）
-            </p>
-            <button
-              onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-              style={{ padding: '0.5rem 1rem', background: 'rgb(217, 119, 6)', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '600' }}
-            >
-              {showApiKeyInput ? 'キャンセル' : 'APIキーを入力'}
-            </button>
-            {showApiKeyInput && (
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-                <input
-                  type="password"
-                  placeholder="sk-ant-..."
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  style={{ flex: 1, padding: '0.5rem 1rem', border: '1px solid rgb(209, 213, 219)', borderRadius: '0.375rem', outline: 'none' }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') handleSaveApiKey();
-                  }}
-                />
-                <button
-                  onClick={handleSaveApiKey}
-                  style={{ padding: '0.5rem 1rem', background: 'rgb(217, 119, 6)', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: 'pointer' }}
-                >
-                  保存
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {apiKey && (
-          <div style={{ background: 'rgb(240, 253, 250)', border: '1px solid rgb(167, 243, 208)', borderRadius: '0.5rem', padding: '1rem', marginBottom: '2rem', fontSize: '0.875rem', color: 'rgb(16, 185, 129)' }}>
-            ✅ APIキーが設定されています ({tempApiKey})
-            <button
-              onClick={() => { localStorage.removeItem('apiKey'); setApiKey(''); }}
-              style={{ marginLeft: '1rem', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(16, 185, 129)' }}
-            >
-              リセット
-            </button>
-          </div>
-        )}
 
         {/* タブメニュー */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '1px solid rgb(229, 231, 235)' }}>
@@ -483,7 +400,7 @@ export default function EnglishDiaryApp() {
         {/* フッター */}
         <div style={{ marginTop: '3rem', textAlign: 'center', color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>
           <p>💾 データはブラウザのローカルストレージに自動保存されています</p>
-          <p style={{ marginTop: '0.5rem' }}>🔒 APIキーは安全に管理されています（クライアント側のみで使用）</p>
+          <p style={{ marginTop: '0.5rem' }}>🔒 APIキーはサーバー側で安全に管理されており、ブラウザには一切保存されません</p>
         </div>
       </div>
     </div>
