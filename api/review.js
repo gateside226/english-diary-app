@@ -38,9 +38,12 @@ module.exports = async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-5',
-        max_tokens: 600,
+        max_tokens: 1024,
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: text }]
+        messages: [{ role: 'user', content: text }],
+        // Sonnet 5はデフォルトでeffort: "high"（じっくり思考する）動作をするため、
+        // このような単純な構造化出力タスクでは明示的にlowにして高速・低コストにする
+        output_config: { effort: 'low' }
       })
     });
 
