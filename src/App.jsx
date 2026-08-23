@@ -16,6 +16,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { auth, db, googleProvider } from './firebase';
+import { getTodaysPhrase } from './motivationalPhrases';
 
 const LOCAL_MIGRATION_FLAG = 'diaryMigratedToFirebase';
 
@@ -243,6 +244,8 @@ export default function EnglishDiaryApp() {
     calendarDays.push(day);
   }
 
+  const todaysPhrase = getTodaysPhrase();
+
   if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, rgb(239, 246, 255), rgb(224, 231, 255))' }}>
@@ -277,7 +280,10 @@ export default function EnglishDiaryApp() {
             <h1 style={{ fontSize: '2.25rem', fontWeight: 'bold', color: 'rgb(17, 24, 39)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <span>📚</span> English Diary
             </h1>
-            <p style={{ color: 'rgb(75, 85, 99)' }}>自然な英語表現を身につけるための継続日記</p>
+            <p style={{ color: 'rgb(75, 85, 99)' }}>
+              {todaysPhrase.en}
+              <span style={{ color: 'rgb(156, 163, 175)' }}> — {todaysPhrase.ja}</span>
+            </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.875rem', color: 'rgb(75, 85, 99)' }}>
             <span>{user.email}</span>
@@ -296,7 +302,7 @@ export default function EnglishDiaryApp() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <span style={{ fontSize: '2.5rem' }}>🔥</span>
               <div>
-                <p style={{ color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>現在のストリーク</p>
+                <p style={{ color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>連続日数</p>
                 <p style={{ fontSize: '3rem', fontWeight: 'bold', color: 'rgb(249, 115, 22)' }}>{getStreakCount()}</p>
                 <p style={{ color: 'rgb(107, 114, 128)', fontSize: '0.875rem' }}>日間継続中</p>
               </div>
@@ -534,11 +540,6 @@ export default function EnglishDiaryApp() {
           </div>
         </div>
 
-        {/* フッター */}
-        <div style={{ marginTop: '3rem', textAlign: 'center', color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>
-          <p>☁️ データはFirebaseに保存され、ログインした端末間で自動的に同期されます</p>
-          <p style={{ marginTop: '0.5rem' }}>🔒 APIキーはサーバー側で安全に管理されており、ブラウザには一切保存されません</p>
-        </div>
       </div>
     </div>
   );
