@@ -39,6 +39,7 @@ export default function EnglishDiaryApp() {
     });
     getRedirectResult(auth).catch((err) => {
       console.error('ログインエラー:', err);
+      alert('⚠️ ログインに失敗しました。\n\nエラー: ' + err.message);
     });
     return unsubscribe;
   }, []);
