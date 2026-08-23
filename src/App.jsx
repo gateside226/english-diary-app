@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   onAuthStateChanged,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   signOut
 } from 'firebase/auth';
 import {
@@ -36,10 +35,6 @@ export default function EnglishDiaryApp() {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
-    });
-    getRedirectResult(auth).catch((err) => {
-      console.error('ログインエラー:', err);
-      alert('⚠️ ログインに失敗しました。\n\nエラー: ' + err.message);
     });
     return unsubscribe;
   }, []);
@@ -100,7 +95,8 @@ export default function EnglishDiaryApp() {
   }, [user]);
 
   const handleLogin = () => {
-    signInWithRedirect(auth, googleProvider).catch((err) => {
+    signInWithPopup(auth, googleProvider).catch((err) => {
+      if (err.code === 'auth/popup-closed-by-user') return;
       console.error('ログインエラー:', err);
       alert('⚠️ ログインに失敗しました。\n\nエラー: ' + err.message);
     });
