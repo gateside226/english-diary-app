@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from 'react';
+import {
+  onAuthStateChanged,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  writeBatch
+} from 'firebase/firestore';
+import { auth, db, googleProvider } from './firebase';
+
+const LOCAL_MIGRATION_FLAG = 'diaryMigratedToFirebase';
 
 export default function EnglishDiaryApp() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [entries, setEntries] = useState([]);
   const [text, setText] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -9,20 +31,80 @@ export default function EnglishDiaryApp() {
   const [view, setView] = useState('calendar');
   const [editingId, setEditingId] = useState(null);
 
-  // ローカルストレージから読み込み
+  // ログイン状態の監視
   useEffect(() => {
-    const saved = localStorage.getItem('diaryEntries');
-    if (saved) setEntries(JSON.parse(saved));
-    // 旧バージョンでブラウザに保存されていたAPIキーが残っていれば削除する
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    getRedirectResult(auth).catch((err) => {
+      console.error('ログインエラー:', err);
+    });
+    return unsubscribe;
+  }, []);
+
+  // ログイン中の旧バージョンで残っていた可能性のあるAPIキーを念のため削除
+  useEffect(() => {
     if (localStorage.getItem('apiKey')) {
       localStorage.removeItem('apiKey');
     }
   }, []);
 
-  // ローカルストレージに保存
+  // ブラウザのローカルストレージにあった旧データをFirestoreへ一度だけ移行
   useEffect(() => {
-    localStorage.setItem('diaryEntries', JSON.stringify(entries));
-  }, [entries]);
+    if (!user) return;
+
+    const migrate = async () => {
+      if (localStorage.getItem(LOCAL_MIGRATION_FLAG)) return;
+
+      try {
+        const saved = localStorage.getItem('diaryEntries');
+        const localEntries = saved ? JSON.parse(saved) : [];
+        if (Array.isArray(localEntries) && localEntries.length > 0) {
+          const entriesRef = collection(db, 'users', user.uid, 'entries');
+          const batch = writeBatch(db);
+          localEntries.forEach((e) => {
+            const newRef = doc(entriesRef);
+            batch.set(newRef, {
+              date: e.date,
+              text: e.text,
+              tags: Array.isArray(e.tags) ? e.tags : [],
+              wordCount: e.wordCount || (e.text ? e.text.split(/\s+/).filter(Boolean).length : 0),
+              createdAt: e.createdAt || new Date().toISOString()
+            });
+          });
+          await batch.commit();
+        }
+        localStorage.setItem(LOCAL_MIGRATION_FLAG, 'true');
+      } catch (err) {
+        console.error('データ移行エラー:', err);
+      }
+    };
+
+    migrate();
+  }, [user]);
+
+  // Firestoreの日記データをリアルタイム購読（他デバイスとの同期はここで実現）
+  useEffect(() => {
+    if (!user) {
+      setEntries([]);
+      return;
+    }
+    const entriesRef = collection(db, 'users', user.uid, 'entries');
+    const q = query(entriesRef, orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setEntries(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsubscribe;
+  }, [user]);
+
+  const handleLogin = () => {
+    signInWithRedirect(auth, googleProvider);
+  };
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
 
   // Claude APIでタグ分類（サーバーサイドの /api/classify 経由。APIキーはブラウザに一切渡らない）
   const classifyTags = async (entryText) => {
@@ -50,58 +132,77 @@ export default function EnglishDiaryApp() {
     }
   };
 
-  // 日記エントリを追加
+  // 日記エントリを追加・更新
   const handleAddEntry = async () => {
     if (!text.trim()) {
       alert('📝 テキストを入力してください');
       return;
     }
+    if (!user) return;
 
     const classifiedTags = await classifyTags(text);
-    
-    if (editingId) {
-      setEntries(entries.map(e => 
-        e.id === editingId 
-          ? { ...e, text, date, tags: classifiedTags, updatedAt: new Date().toISOString() }
-          : e
-      ));
-      setEditingId(null);
-    } else {
-      const newEntry = {
-        id: Date.now(),
-        date,
-        text,
-        tags: classifiedTags,
-        wordCount: text.split(/\s+/).length,
-        createdAt: new Date().toISOString()
-      };
-      setEntries([newEntry, ...entries]);
+    const entriesRef = collection(db, 'users', user.uid, 'entries');
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+    try {
+      if (editingId) {
+        await updateDoc(doc(entriesRef, editingId), {
+          text,
+          date,
+          tags: classifiedTags,
+          wordCount,
+          updatedAt: new Date().toISOString()
+        });
+        setEditingId(null);
+      } else {
+        await addDoc(entriesRef, {
+          date,
+          text,
+          tags: classifiedTags,
+          wordCount,
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error('保存エラー:', err);
+      alert('⚠️ 保存に失敗しました。もう一度お試しください。');
+      return;
     }
 
     setText('');
     setDate(new Date().toISOString().split('T')[0]);
   };
 
+  const handleDeleteEntry = async (entryId) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'entries', entryId));
+    } catch (err) {
+      console.error('削除エラー:', err);
+      alert('⚠️ 削除に失敗しました。もう一度お試しください。');
+    }
+  };
+
   // 継続日数を計算
   const getStreakCount = () => {
     if (entries.length === 0) return 0;
-    
+
     const sortedDates = [...new Set(entries.map(e => e.date))].sort().reverse();
     let streak = 0;
     let currentDate = new Date();
-    
+
     for (let i = 0; i < sortedDates.length; i++) {
       const entryDate = new Date(sortedDates[i]);
       const expectedDate = new Date(currentDate);
       expectedDate.setDate(expectedDate.getDate() - i);
-      
+
       if (entryDate.toDateString() === expectedDate.toDateString()) {
         streak++;
       } else {
         break;
       }
     }
-    
+
     return streak;
   };
 
@@ -142,15 +243,51 @@ export default function EnglishDiaryApp() {
     calendarDays.push(day);
   }
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, rgb(239, 246, 255), rgb(224, 231, 255))' }}>
+        <p style={{ color: 'rgb(75, 85, 99)' }}>読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, rgb(239, 246, 255), rgb(224, 231, 255))', padding: '1rem' }}>
+        <div style={{ background: 'white', borderRadius: '0.5rem', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '2.5rem', textAlign: 'center', maxWidth: '24rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'rgb(17, 24, 39)', marginBottom: '0.5rem' }}>📚 English Diary</h1>
+          <p style={{ color: 'rgb(75, 85, 99)', marginBottom: '1.5rem' }}>Googleアカウントでログインして、PCとiPhoneで日記を同期しましょう。</p>
+          <button
+            onClick={handleLogin}
+            style={{ width: '100%', padding: '0.75rem 1rem', background: 'rgb(37, 99, 235)', color: 'white', fontWeight: '600', borderRadius: '0.375rem', border: 'none', cursor: 'pointer' }}
+          >
+            Googleでログイン
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom right, rgb(239, 246, 255), rgb(224, 231, 255))', padding: '1rem' }}>
       <div style={{ maxWidth: '90rem', margin: '0 auto' }}>
         {/* ヘッダー */}
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 'bold', color: 'rgb(17, 24, 39)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span>📚</span> English Diary
-          </h1>
-          <p style={{ color: 'rgb(75, 85, 99)' }}>自然な英語表現を身につけるための継続日記</p>
+        <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h1 style={{ fontSize: '2.25rem', fontWeight: 'bold', color: 'rgb(17, 24, 39)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span>📚</span> English Diary
+            </h1>
+            <p style={{ color: 'rgb(75, 85, 99)' }}>自然な英語表現を身につけるための継続日記</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.875rem', color: 'rgb(75, 85, 99)' }}>
+            <span>{user.email}</span>
+            <button
+              onClick={handleLogout}
+              style={{ padding: '0.5rem 1rem', background: 'rgb(229, 231, 235)', color: 'rgb(55, 65, 81)', borderRadius: '0.375rem', border: 'none', cursor: 'pointer' }}
+            >
+              ログアウト
+            </button>
+          </div>
         </div>
 
         {/* ストリークカウンター */}
@@ -205,7 +342,7 @@ export default function EnglishDiaryApp() {
             <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               ➕ 新しい日記
             </h2>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: 'rgb(55, 65, 81)', marginBottom: '0.5rem' }}>
@@ -249,7 +386,7 @@ export default function EnglishDiaryApp() {
             {view === 'calendar' && (
               <div>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>{currentMonth.getFullYear()}年 {currentMonth.getMonth() + 1}月</h2>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
                   {['日', '月', '火', '水', '木', '金', '土'].map(day => (
                     <div key={day} style={{ textAlign: 'center', fontWeight: '600', color: 'rgb(75, 85, 99)', fontSize: '0.875rem', padding: '0.5rem' }}>
@@ -308,7 +445,7 @@ export default function EnglishDiaryApp() {
             {view === 'list' && (
               <div>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>投稿一覧</h2>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {entries.length === 0 ? (
                     <p style={{ color: 'rgb(107, 114, 128)', textAlign: 'center', padding: '2rem' }}>まだ日記がありません</p>
@@ -332,7 +469,7 @@ export default function EnglishDiaryApp() {
                               ✏️
                             </button>
                             <button
-                              onClick={() => setEntries(entries.filter(e => e.id !== entry.id))}
+                              onClick={() => handleDeleteEntry(entry.id)}
                               style={{ padding: '0.5rem', color: 'rgb(239, 68, 68)', background: 'white', border: 'none', cursor: 'pointer', borderRadius: '0.375rem', transition: 'background-color 0.2s' }}
                             >
                               🗑️
@@ -357,7 +494,7 @@ export default function EnglishDiaryApp() {
             {view === 'stats' && (
               <div>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>統計情報</h2>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                   <div style={{ background: 'rgb(239, 246, 255)', borderRadius: '0.375rem', padding: '1rem' }}>
                     <p style={{ color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>投稿数</p>
@@ -399,7 +536,7 @@ export default function EnglishDiaryApp() {
 
         {/* フッター */}
         <div style={{ marginTop: '3rem', textAlign: 'center', color: 'rgb(75, 85, 99)', fontSize: '0.875rem' }}>
-          <p>💾 データはブラウザのローカルストレージに自動保存されています</p>
+          <p>☁️ データはFirebaseに保存され、ログインした端末間で自動的に同期されます</p>
           <p style={{ marginTop: '0.5rem' }}>🔒 APIキーはサーバー側で安全に管理されており、ブラウザには一切保存されません</p>
         </div>
       </div>
