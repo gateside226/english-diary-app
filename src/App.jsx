@@ -30,6 +30,7 @@ export default function EnglishDiaryApp() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [view, setView] = useState('calendar');
   const [editingId, setEditingId] = useState(null);
+  const [reviewingIds, setReviewingIds] = useState(new Set());
 
   // ログイン状態の監視
   useEffect(() => {
@@ -181,6 +182,36 @@ export default function EnglishDiaryApp() {
     } catch (err) {
       console.error('削除エラー:', err);
       alert('⚠️ 削除に失敗しました。もう一度お試しください。');
+    }
+  };
+
+  // 和訳・採点・添削（Claude Sonnet 5）。結果はエントリに保存し、次回以降は再取得しない
+  const handleReview = async (entry) => {
+    if (!user) return;
+    setReviewingIds((prev) => new Set(prev).add(entry.id));
+    try {
+      const response = await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: entry.text })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `API Error: ${response.status}`);
+      }
+
+      const review = await response.json();
+      await updateDoc(doc(db, 'users', user.uid, 'entries', entry.id), { review });
+    } catch (err) {
+      console.error('添削エラー:', err);
+      alert('⚠️ 添削に失敗しました。しばらくしてからもう一度お試しください。');
+    } finally {
+      setReviewingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
     }
   };
 
@@ -491,13 +522,38 @@ export default function EnglishDiaryApp() {
                           </div>
                         </div>
                         <p style={{ color: 'rgb(55, 65, 81)', marginBottom: '0.75rem' }}>{entry.text}</p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
                           {entry.tags.map(tag => (
                             <span key={tag} style={{ display: 'inline-block', background: 'rgb(219, 234, 254)', color: 'rgb(30, 58, 138)', fontSize: '0.75rem', fontWeight: '600', padding: '0.25rem 0.75rem', borderRadius: '9999px' }}>
                               {tag}
                             </span>
                           ))}
                         </div>
+
+                        {entry.review ? (
+                          <div style={{ background: 'rgb(250, 245, 255)', border: '1px solid rgb(233, 213, 255)', borderRadius: '0.375rem', padding: '0.75rem', fontSize: '0.875rem' }}>
+                            <p style={{ fontWeight: '600', color: 'rgb(88, 28, 135)', marginBottom: '0.5rem' }}>
+                              🎓 添削結果{entry.review.score !== null ? `（${entry.review.score} / 10）` : ''}
+                            </p>
+                            <p style={{ color: 'rgb(55, 65, 81)', marginBottom: '0.5rem' }}>
+                              <span style={{ fontWeight: '600' }}>和訳: </span>{entry.review.translation}
+                            </p>
+                            <p style={{ color: 'rgb(55, 65, 81)', marginBottom: '0.5rem' }}>
+                              <span style={{ fontWeight: '600' }}>フィードバック: </span>{entry.review.feedback}
+                            </p>
+                            <p style={{ color: 'rgb(55, 65, 81)' }}>
+                              <span style={{ fontWeight: '600' }}>添削後: </span>{entry.review.corrected}
+                            </p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleReview(entry)}
+                            disabled={reviewingIds.has(entry.id)}
+                            style={{ padding: '0.4rem 0.75rem', fontSize: '0.8125rem', background: reviewingIds.has(entry.id) ? 'rgb(216, 180, 254)' : 'rgb(147, 51, 234)', color: 'white', borderRadius: '0.375rem', border: 'none', cursor: reviewingIds.has(entry.id) ? 'not-allowed' : 'pointer' }}
+                          >
+                            {reviewingIds.has(entry.id) ? '🤖 添削中...' : '🎓 添削してもらう（Sonnet）'}
+                          </button>
+                        )}
                       </div>
                     ))
                   )}
